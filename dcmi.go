@@ -330,10 +330,10 @@ import (
 	"strings"
 	"unsafe"
 
-	"huawei.com/npu-exporter/v5/common-utils/hwlog"
-	"huawei.com/npu-exporter/v5/common-utils/utils"
+	"github.com/gmodx/ascend-dcmi/hwlog"
+	"github.com/gmodx/ascend-dcmi/utils"
 
-	"huawei.com/npu-exporter/v5/devmanager/common"
+	"github.com/gmodx/ascend-dcmi/common"
 )
 
 // CDcmiMemoryInfoV3 the c struct of memoryInfo for v3
