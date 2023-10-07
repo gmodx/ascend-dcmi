@@ -330,8 +330,8 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/gmodx/ascend-dcmi/hwlog"
 	"github.com/gmodx/ascend-dcmi/utils"
+	"github.com/sirupsen/logrus"
 
 	"github.com/gmodx/ascend-dcmi/common"
 )
@@ -444,7 +444,7 @@ func (d *DcManager) DcGetCardList() (int32, []int32, error) {
 	for i = 0; i < cardNum; i++ {
 		cardID := int32(ids[i])
 		if cardID < 0 {
-			hwlog.RunLog.Errorf("get invalid card ID: %d", cardID)
+			logrus.Errorf("get invalid card ID: %d", cardID)
 			continue
 		}
 		cardIDList = append(cardIDList, cardID)
@@ -1289,7 +1289,7 @@ func (d *DcManager) DcSetFaultEventCallFunc(businessFunc func(common.DevFaultInf
 //export goEventFaultCallBack
 func goEventFaultCallBack(event C.struct_dcmi_dms_fault_event) {
 	if faultEventCallFunc == nil {
-		hwlog.RunLog.Errorf("no fault event call back func")
+		logrus.Errorf("no fault event call back func")
 		return
 	}
 	devFaultInfo := common.DevFaultInfo{
@@ -1322,7 +1322,7 @@ func (d *DcManager) DcGetDieID(cardID, deviceID int32, dcmiDieType DcmiDieType) 
 	const hexBase = 16
 	dieIDStr := make([]string, DieIDCount)
 
-	hwlog.RunLog.Debugf("cardID(%d), deviceID(%d) get die type(%d) value %v", cardID, deviceID, dcmiDieType,
+	logrus.Debugf("cardID(%d), deviceID(%d) get die type(%d) value %v", cardID, deviceID, dcmiDieType,
 		dieIDObj.soc_die)
 	for i := 0; i < DieIDCount; i++ {
 		s := strconv.FormatUint(uint64(dieIDObj.soc_die[i]), hexBase)
