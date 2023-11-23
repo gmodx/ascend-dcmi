@@ -86,12 +86,18 @@ const (
 	Ascend910 = "Ascend910"
 	// Ascend910B ascend 1980B(910B) chip
 	Ascend910B = "Ascend910B"
+	// Atlas200ISoc 200 soc env
+	Atlas200ISoc = "Atlas 200I SoC A1"
 
 	// NeverStopTimeout never stop interface timeout
 	NeverStopTimeout = -1
 
 	// SubscribeAllDevice subscribe all device ID
 	SubscribeAllDevice = -1
+	// MinVDevID min value of virtual device id
+	MinVDevID = 100
+	// MaxVDevID max value of virtual device id
+	MaxVDevID = 1124
 )
 
 const (
@@ -130,4 +136,6 @@ const (
 	MaxProcNum = 32
 	// UnitMB MB
 	UnitMB float64 = 1024 * 1024
+	// Chip910 chip name 910
+	Chip910 = "910"
 )

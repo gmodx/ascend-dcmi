@@ -228,6 +228,16 @@ package ascenddcmi
         CALL_FUNC(dcmi_get_device_resource_info,card_id,device_id,proc_info,proc_num)
     }
 
+    int (*dcmi_get_device_pcie_info_v2_func)(int card_id, int device_id, struct dcmi_pcie_info_all *pcie_info);
+    int dcmi_get_device_pcie_info_v2(int card_id, int device_id, struct dcmi_pcie_info_all *pcie_info){
+        CALL_FUNC(dcmi_get_device_pcie_info_v2,card_id,device_id,pcie_info)
+    }
+
+    int (*dcmi_get_device_board_info_func)(int card_id, int device_id, struct dcmi_board_info *board_info);
+    int dcmi_get_device_board_info(int card_id, int device_id, struct dcmi_board_info *board_info){
+        CALL_FUNC(dcmi_get_device_board_info,card_id,device_id,board_info)
+    }
+
    // load .so files and functions
    static int dcmiInit_dl(const char* dcmiLibPath){
    	if (dcmiLibPath == NULL) {
@@ -310,6 +320,10 @@ package ascenddcmi
 
     dcmi_get_device_resource_info_func = dlsym(dcmiHandle, "dcmi_get_device_resource_info");
 
+    dcmi_get_device_pcie_info_v2_func = dlsym(dcmiHandle, "dcmi_get_device_pcie_info_v2");
+
+    dcmi_get_device_board_info_func = dlsym(dcmiHandle, "dcmi_get_device_board_info");
+
    	return SUCCESS;
    }
 
@@ -328,6 +342,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/gmodx/ascend-dcmi/utils"
@@ -363,9 +378,10 @@ type DcDriverInterface interface {
 	DcGetPhysicIDFromLogicID(int32) (int32, error)
 	DcGetLogicIDFromPhysicID(int32) (int32, error)
 	DcGetDeviceLogicID(int32, int32) (int32, error)
-	DcGetDeviceIPAddress(int32, int32) (string, error)
+	DcGetDeviceIPAddress(int32, int32, int32) (string, error)
 	DcGetMcuPowerInfo(int32) (float32, error)
 	DcGetDieID(int32, int32, DcmiDieType) (string, error)
+	DcGetPCIeBusInfo(int32, int32) (string, error)
 
 	DcGetCardList() (int32, []int32, error)
 	DcGetDeviceNumInCard(int32) (int32, error)
@@ -374,6 +390,7 @@ type DcDriverInterface interface {
 	DcGetDeviceVDevResource(int32, int32, uint32) (common.CgoVDevQueryStru, error)
 	DcGetDeviceTotalResource(int32, int32) (common.CgoSocTotalResource, error)
 	DcGetDeviceFreeResource(int32, int32) (common.CgoSocFreeResource, error)
+	DcGetVDevActivityInfo(int32, int32, uint32) (common.VDevActivityInfo, error)
 	DcVGetDeviceInfo(int32, int32) (common.VirtualDevInfo, error)
 	DcGetCardIDDeviceID(int32) (int32, int32, error)
 	DcCreateVDevice(int32, common.CgoCreateVDevRes) (common.CgoCreateVDevOut, error)
@@ -388,6 +405,7 @@ type DcDriverInterface interface {
 	DcSubscribeDeviceFaultEvent(int32, int32) error
 	DcSetFaultEventCallFunc(func(common.DevFaultInfo))
 	DcGetDevProcessInfo(int32, int32) (*common.DevProcessInfo, error)
+	DcGetDeviceBoardInfo(int32, int32) (common.BoardInfo, error)
 }
 
 const (
@@ -701,6 +719,37 @@ func (d *DcManager) DcGetDeviceFreeResource(cardID, deviceID int32) (common.CgoS
 	return convertSocFreeResource(freeResource), nil
 }
 
+// DcGetVDevActivityInfo get vir device activity info by virtual device id
+func (d *DcManager) DcGetVDevActivityInfo(cardID, deviceID int32, vDevID uint32) (common.VDevActivityInfo, error) {
+	if !common.IsValidCardIDAndDeviceID(cardID, deviceID) {
+		return common.VDevActivityInfo{}, fmt.Errorf("cardID(%d) or deviceID(%d) is invalid", cardID, deviceID)
+	}
+	if !common.IsValidVDevID(vDevID) {
+		return common.VDevActivityInfo{}, fmt.Errorf("vDevID(%d) invalid", vDevID)
+	}
+	var cMainCmd = C.enum_dcmi_main_cmd(MainCmdVDevMng)
+	subCmd := VmngSubCmdGetVDevActivity
+	var vDevActivityInfo C.struct_dcmi_vdev_query_stru
+	size := C.uint(unsafe.Sizeof(vDevActivityInfo))
+	vDevActivityInfo.vdev_id = C.uint(vDevID)
+	if retCode := C.dcmi_get_device_info(C.int(cardID), C.int(deviceID), cMainCmd, C.uint(subCmd),
+		unsafe.Pointer(&vDevActivityInfo), &size); int32(retCode) != common.Success {
+		return common.VDevActivityInfo{}, fmt.Errorf("retCode: %d", int32(retCode))
+	}
+	totalMemSize := uint64(vDevActivityInfo.query_info.computing.vdev_memory_total)
+	usedMemSize := totalMemSize - uint64(vDevActivityInfo.query_info.computing.vdev_memory_free)
+	if usedMemSize < 0 {
+		return common.VDevActivityInfo{}, errors.New("used memory value abnormal")
+	}
+	return common.VDevActivityInfo{
+		VDevID:         vDevID,
+		VDevAiCoreRate: uint32(vDevActivityInfo.query_info.computing.vdev_aicore_utilization),
+		VDevTotalMem:   totalMemSize,
+		VDevUsedMem:    usedMemSize,
+		IsVirtualDev:   true,
+	}, nil
+}
+
 // DcVGetDeviceInfo get vdevice resource info
 func (d *DcManager) DcVGetDeviceInfo(cardID, deviceID int32) (common.VirtualDevInfo, error) {
 	if !common.IsValidCardIDAndDeviceID(cardID, deviceID) {
@@ -716,14 +765,13 @@ func (d *DcManager) DcVGetDeviceInfo(cardID, deviceID int32) (common.VirtualDevI
 
 	cgoDcmiSocTotalResource, err := d.DcGetDeviceTotalResource(cardID, deviceID)
 	if err != nil {
-		return common.VirtualDevInfo{}, fmt.Errorf("get device total resource failed, error is: %#v", err)
+		return common.VirtualDevInfo{}, fmt.Errorf("get device total resource failed, error is: %v", err)
 	}
 
 	cgoDcmiSocFreeResource, err := d.DcGetDeviceFreeResource(cardID, deviceID)
 	if err != nil {
-		return common.VirtualDevInfo{}, fmt.Errorf("get device free resource failed, error is: %#v", err)
+		return common.VirtualDevInfo{}, fmt.Errorf("get device free resource failed, error is: %v", err)
 	}
-
 	dcmiVDevInfo := common.VirtualDevInfo{
 		TotalResource: cgoDcmiSocTotalResource,
 		FreeResource:  cgoDcmiSocFreeResource,
@@ -731,9 +779,15 @@ func (d *DcManager) DcVGetDeviceInfo(cardID, deviceID int32) (common.VirtualDevI
 	for _, vDevID := range cgoDcmiSocTotalResource.VDevID {
 		cgoVDevQueryStru, err := d.DcGetDeviceVDevResource(cardID, deviceID, vDevID)
 		if err != nil {
-			return common.VirtualDevInfo{}, fmt.Errorf("get device virtual resource failed, error is: %#v", err)
+			return common.VirtualDevInfo{}, fmt.Errorf("get device virtual resource failed, error is: %v", err)
 		}
 		dcmiVDevInfo.VDevInfo = append(dcmiVDevInfo.VDevInfo, cgoVDevQueryStru)
+		vDevActivityInfo, err := d.DcGetVDevActivityInfo(cardID, deviceID, vDevID)
+		if err != nil {
+			logrus.Warnf("get cur vDev's activity info failed, err: %s", err)
+		}
+		vDevActivityInfo.VDevAiCore = float64(cgoVDevQueryStru.QueryInfo.Computing.Aic)
+		dcmiVDevInfo.VDevActivityInfo = append(dcmiVDevInfo.VDevActivityInfo, vDevActivityInfo)
 	}
 	return dcmiVDevInfo, nil
 }
@@ -783,12 +837,12 @@ func (d *DcManager) DcGetVDeviceInfo(logicID int32) (common.VirtualDevInfo, erro
 	}
 	cardID, deviceID, err := d.DcGetCardIDDeviceID(logicID)
 	if err != nil {
-		return common.VirtualDevInfo{}, fmt.Errorf("get card id and device id failed, error is: %#v", err)
+		return common.VirtualDevInfo{}, fmt.Errorf("get card id and device id failed, error is: %v", err)
 	}
 
 	dcmiVDevInfo, err := d.DcVGetDeviceInfo(cardID, deviceID)
 	if err != nil {
-		return common.VirtualDevInfo{}, fmt.Errorf("get virtual device info failed, error is: %#v", err)
+		return common.VirtualDevInfo{}, fmt.Errorf("get virtual device info failed, error is: %v", err)
 	}
 	return dcmiVDevInfo, nil
 }
@@ -1106,7 +1160,7 @@ func (d *DcManager) DcGetPhysicIDFromLogicID(logicID int32) (int32, error) {
 }
 
 // DcGetDeviceIPAddress get device IP address by cardID and deviceID
-func (d *DcManager) DcGetDeviceIPAddress(cardID, deviceID int32) (string, error) {
+func (d *DcManager) DcGetDeviceIPAddress(cardID, deviceID, ipType int32) (string, error) {
 	if !common.IsValidCardIDAndDeviceID(cardID, deviceID) {
 		return "", fmt.Errorf("cardID(%d) or deviceID(%d) is invalid", cardID, deviceID)
 	}
@@ -1114,22 +1168,46 @@ func (d *DcManager) DcGetDeviceIPAddress(cardID, deviceID int32) (string, error)
 	var portID C.int
 	var ipAddress C.struct_dcmi_ip_addr
 	var maskAddress C.struct_dcmi_ip_addr
+	if ipType == ipAddrTypeV6 {
+		ipAddress.ip_type = ipAddrTypeV6
+	}
 	rCode := C.dcmi_get_device_ip(C.int(cardID), C.int(deviceID), portType, portID, &ipAddress, &maskAddress)
 	if int32(rCode) != common.Success {
 		return "", fmt.Errorf("get device IP address failed, cardID(%d), deviceID(%d), error code: %d",
 			cardID, deviceID, int32(rCode))
 	}
+	if ipType == ipAddrTypeV6 {
+		return d.buildIPv6Addr(ipAddress)
+	}
+	return d.buildIPv4Addr(ipAddress)
+}
 
-	unionPara := ipAddress.u_addr
-	var deviceIP []string
-	for i := 0; i < common.DeviceIPLength; i++ {
-		deviceIP = append(deviceIP, fmt.Sprintf("%d", uint8(unionPara[i])))
+func (d *DcManager) buildIPv4Addr(ipAddress C.struct_dcmi_ip_addr) (string, error) {
+	deviceIP := make([]string, 0, net.IPv4len)
+	for key, val := range ipAddress.u_addr {
+		if key >= net.IPv4len {
+			break
+		}
+		deviceIP = append(deviceIP, fmt.Sprintf("%v", val))
 	}
-	parsedIP := net.ParseIP(strings.Join(deviceIP, "."))
-	if parsedIP == nil {
-		return "", fmt.Errorf("the device IP address %s is invalid", deviceIP)
+	if netIP := net.ParseIP(strings.Join(deviceIP, ".")); netIP != nil {
+		return netIP.String(), nil
 	}
-	return parsedIP.String(), nil
+	return "", fmt.Errorf("the device IPv4 address is invalid, value: %v", deviceIP)
+}
+
+func (d *DcManager) buildIPv6Addr(ipAddress C.struct_dcmi_ip_addr) (string, error) {
+	deviceIP := make([]byte, 0, net.IPv6len)
+	for key, val := range ipAddress.u_addr {
+		if key >= net.IPv6len {
+			break
+		}
+		deviceIP = append(deviceIP, byte(val))
+	}
+	if netIP := net.IP(deviceIP); netIP != nil {
+		return netIP.String(), nil
+	}
+	return "", fmt.Errorf("the device IPv6 address is invalid, value: %v", deviceIP)
 }
 
 // DcGetDeviceNetWorkHealth get device network health by cardID and deviceID
@@ -1292,12 +1370,14 @@ func goEventFaultCallBack(event C.struct_dcmi_dms_fault_event) {
 		logrus.Errorf("no fault event call back func")
 		return
 	}
+	// recovery event recorded fault event occurrence time, the recovery event time cannot be obtained.
+	// Therefore, all event occurrence time is recorded as the current host time when the event is received.
 	devFaultInfo := common.DevFaultInfo{
 		EventID:         int64(event.event_id),
 		LogicID:         int32(event.deviceid),
 		Severity:        int8(event.severity),
 		Assertion:       int8(event.assertion),
-		AlarmRaisedTime: int64(event.alarm_raised_time),
+		AlarmRaisedTime: time.Now().UnixMilli(),
 	}
 	faultEventCallFunc(devFaultInfo)
 }
@@ -1373,4 +1453,46 @@ func convertToDevResourceInfo(procList [common.MaxProcNum]C.struct_dcmi_proc_mem
 	}
 
 	return info
+}
+
+// DcGetPCIeBusInfo pcie bus info
+func (d *DcManager) DcGetPCIeBusInfo(cardID, deviceID int32) (string, error) {
+	if !common.IsValidCardIDAndDeviceID(cardID, deviceID) {
+		return "", fmt.Errorf("cardID(%d) or deviceID(%d) is invalid", cardID, deviceID)
+	}
+
+	var pcieInfo C.struct_dcmi_pcie_info_all
+
+	if retCode := C.dcmi_get_device_pcie_info_v2(C.int(cardID), C.int(deviceID), &pcieInfo); int32(retCode) != common.Success {
+		return "", fmt.Errorf("get pcie bus info failed, cardID(%d) and deviceID(%d) , error code: %d",
+			cardID, deviceID, int32(retCode))
+	}
+
+	info := fmt.Sprintf("%04X:%02X:%02X.%-4X", int32(pcieInfo.domain), uint32(pcieInfo.bdf_busid),
+		uint32(pcieInfo.bdf_deviceid), uint32(pcieInfo.bdf_funcid))
+	logrus.Debugf("pcie bus info is: '%s'", info)
+
+	return strings.TrimRight(info, " "), nil
+}
+
+// DcGetDeviceBoardInfo return board info of device
+func (d *DcManager) DcGetDeviceBoardInfo(cardID, deviceID int32) (common.BoardInfo, error) {
+	if !common.IsValidCardIDAndDeviceID(cardID, deviceID) {
+		return common.BoardInfo{}, fmt.Errorf("cardID(%d) or deviceID(%d) is invalid", cardID, deviceID)
+	}
+
+	var cBoardInfo C.struct_dcmi_board_info
+
+	if retCode := C.dcmi_get_device_board_info(C.int(cardID), C.int(deviceID),
+		&cBoardInfo); int32(retCode) != common.Success {
+		return common.BoardInfo{}, fmt.Errorf("get board info failed, cardID(%d) and deviceID(%d) , error code: %d",
+			cardID, deviceID, int32(retCode))
+	}
+
+	return common.BoardInfo{
+		BoardId: uint32(cBoardInfo.board_id),
+		PcbId:   uint32(cBoardInfo.pcb_id),
+		BomId:   uint32(cBoardInfo.bom_id),
+		SlotId:  uint32(cBoardInfo.slot_id),
+	}, nil
 }
