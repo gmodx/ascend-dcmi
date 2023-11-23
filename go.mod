@@ -4,7 +4,6 @@ go 1.18
 
 require (
 	github.com/agiledragon/gomonkey/v2 v2.8.0
-	github.com/fsnotify/fsnotify v1.6.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/smartystreets/goconvey v1.6.4
 )

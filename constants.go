@@ -45,6 +45,8 @@ const (
 	VmngSubCmdGetTotalResource VDevMngSubCmd = 1
 	// VmngSubCmdGetFreeResource get free resource info
 	VmngSubCmdGetFreeResource VDevMngSubCmd = 2
+	// VmngSubCmdGetVDevActivity get vir device activity info
+	VmngSubCmdGetVDevActivity VDevMngSubCmd = 5
 
 	// NDIE NDie ID, only Ascend910 has
 	NDIE DcmiDieType = 0
@@ -52,4 +54,7 @@ const (
 	VDIE DcmiDieType = 1
 	// DieIDCount die id array max length
 	DieIDCount = 5
+
+	// ipAddrTypeV6 ip address type of IPv6
+	ipAddrTypeV6 = 1
 )

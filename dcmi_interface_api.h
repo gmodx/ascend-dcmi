@@ -37,6 +37,18 @@ struct dcmi_chip_info {
     unsigned int aicore_cnt;
 };
 
+struct dcmi_pcie_info_all {
+    unsigned int venderid;           /* 厂商id */
+    unsigned int subvenderid;        /* 厂商子id */
+    unsigned int deviceid;           /* 设备id */
+    unsigned int subdeviceid;        /* 设备子id */
+    int domain;
+    unsigned int bdf_busid;
+    unsigned int bdf_deviceid;
+    unsigned int bdf_funcid;
+    unsigned char reserve[32];       /* the size of dcmi_pcie_info_all is 64 */
+};
+
 struct dcmi_die_id {
     unsigned int soc_die[DIE_ID_COUNT];
 };
@@ -145,6 +157,7 @@ enum dcmi_die_type {
 };
 
 #define DCMI_VDEV_RES_NAME_LEN 16
+#define DCMI_VDEV_SIZE 20
 #define DCMI_VDEV_FOR_RESERVE 32
 #define DCMI_SOC_SPLIT_MAX 32
 #define DCMI_MAX_EVENT_NAME_LENGTH 256
@@ -193,7 +206,12 @@ struct dcmi_computing_resource {
     unsigned short device_aicpu;
     unsigned short topic_ctrl_cpu_slot;
 
-    unsigned char reserved[DCMI_VDEV_FOR_RESERVE];
+    /* vnpu resource */
+    unsigned int vdev_aicore_utilization;
+    unsigned long long vdev_memory_total;
+    unsigned long long vdev_memory_free;
+
+    unsigned char reserved[DCMI_VDEV_FOR_RESERVE-DCMI_VDEV_SIZE];
 };
 
 struct dcmi_media_resource {
@@ -307,6 +325,13 @@ struct dcmi_proc_mem_info {
     unsigned long proc_mem_usage;
 };
 
+struct dcmi_board_info {
+    unsigned int board_id;
+    unsigned int pcb_id;
+    unsigned int bom_id;
+    unsigned int slot_id; // slot_id indicates pcie slot ID of the chip
+};
+
 #define DCMI_VERSION_1
 #define DCMI_VERSION_2
 
@@ -321,6 +346,8 @@ DCMIDLLEXPORT int dcmi_get_device_num_in_card(int card_id, int *device_num);
 DCMIDLLEXPORT int dcmi_get_device_id_in_card(int card_id, int *device_id_max, int *mcu_id, int *cpu_id);
 
 DCMIDLLEXPORT int dcmi_get_device_type(int card_id, int device_id, enum dcmi_unit_type *device_type);
+
+DCMIDLLEXPORT int dcmi_get_device_pcie_info_v2(int card_id, int device_id, struct dcmi_pcie_info_all *pcie_info);
 
 DCMIDLLEXPORT int dcmi_get_device_chip_info(int card_id, int device_id, struct dcmi_chip_info *chip_info);
 
@@ -384,6 +411,8 @@ DCMIDLLEXPORT int dcmi_get_device_die_v2(
 
 DCMIDLLEXPORT int dcmi_get_device_resource_info (int card_id, int device_id, struct dcmi_proc_mem_info *proc_info,
     int *proc_num);
+
+DCMIDLLEXPORT int dcmi_get_device_board_info (int card_id, int device_id, struct dcmi_board_info *board_info);
 
 
 #endif

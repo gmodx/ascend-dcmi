@@ -74,6 +74,11 @@ func IsValidDevNumInCard(num int32) bool {
 	return num > 0 && num <= HiAIMaxDeviceNum
 }
 
+// IsValidVDevID valid vir device id
+func IsValidVDevID(vDevID uint32) bool {
+	return vDevID >= MinVDevID &&  vDevID < MaxVDevID
+}
+
 // GetDeviceTypeByChipName get device type by chipName
 func GetDeviceTypeByChipName(chipName string) string {
 	if strings.Contains(chipName, "310P") {
@@ -102,9 +107,9 @@ func get910TemplateNameList() map[string]struct{} {
 
 func get910BTemplateNameList() map[string]struct{} {
 	return map[string]struct{}{
-		"vir03_hc_8g": {}, "vir05_1c_8g": {}, "vir05_1c_16g": {},
-		"vir06_1c_16g": {}, "vir10_3c_16g": {}, "vir10_3c_16g_m": {}, "vir10_3c_16g_nm": {}, "vir10_3c_32g": {},
-		"vir10_3c_32g_m": {}, "vir10_3c_32g_nm": {}, "vir12_3c_32g": {}, "vir12_3c_32g_m": {}, "vir12_3c_32g_nm": {}}
+		"vir03_1c_8g": {}, "vir05_1c_8g": {}, "vir05_1c_16g": {},
+		"vir06_1c_16g": {}, "vir10_3c_16g": {}, "vir10_3c_16g_nm": {},
+		"vir10_3c_32g": {}, "vir10_4c_16g_m": {}, "vir12_3c_32g": {}}
 }
 
 func get310PTemplateNameList() map[string]struct{} {
